@@ -36,11 +36,46 @@ def load_ans(data_path_, rpos_path_, fs_):
     # model = load_model('models/rematch_ckpt_plain_rev2_40_43632_0_347_0.0892_0.0877_0.9654_0.9665.h5') #lstm-conv
     # models.append(model)
 
-    model = load_model('models/rematch_ckpt_plain_rev4_40_19031_0_031_0.0587_0.0711_0.9763_0.9722.h5')
-    models.append(model)
-    model = load_model('models/rematch_ckpt_plain_rev4_40_92098_0_047_0.0654_0.0733_0.9740_0.9720.h5')
-    models.append(model)
-    model = load_model('models/rematch_ckpt_plain_rev4_40_11085_0_037_0.0669_0.0644_0.9729_0.9741.h5')
+    '''ver.2.3'''
+    # model = load_model('models/rematch_ckpt_plain_rev4_40_19031_0_031_0.0587_0.0711_0.9763_0.9722.h5')
+    # models.append(model)
+    # model = load_model('models/rematch_ckpt_plain_rev4_40_92098_0_047_0.0654_0.0733_0.9740_0.9720.h5')
+    # models.append(model)
+    # model = load_model('models/rematch_ckpt_plain_rev4_40_11085_0_037_0.0669_0.0644_0.9729_0.9741.h5')
+    # models.append(model)
+
+    '''ver.2.4'''
+    # model = load_model('models/rematch_ckpt_plain_rev4_30_69622_0_002_0.0498_0.0590_0.9793_0.9770.h5') # U-net LSTM
+    # models.append(model)
+    # model = load_model('models/rematch_ckpt_plain_rev4_30_52643_0_001_0.0562_0.0622_0.9772_0.9746.h5') # stacked LSTM
+    # models.append(model)
+    # model = load_model('models/rematch_ckpt_plain_rev4_30_17321_2_002_0.0517_0.0608_0.9799_0.9768.h5') # U-net++ LSTM
+    # models.append(model)
+
+    '''ver.3 '''
+    # model = load_model('models/tune_fold10_30_netlstm_sig1_89383_4_002_0.0553_0.0452_0.9776_0.9811.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_netlstm_sig1_99576_3_007_0.0579_0.0484_0.9765_0.9801.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_netlstm_sig1_59925_7_003_0.0641_0.0546_0.9744_0.9781.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_netlstm_sig1_64082_1_007_0.0628_0.0658_0.9746_0.9732.h5')
+    # models.append(model)
+
+    '''ver.4'''
+    # model = load_model('models/tune_fold10_30_transunetlstm_sig1_54232_4_001_0.0560_0.0513_0.9773_0.9795.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_transunetlstm_sig1_22794_5_005_0.0580_0.0548_0.9767_0.9777.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_transunetlstm_sig1_38928_6_001_0.0594_0.0532_0.9760_0.9784.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_transunetlstm_sig1_26234_0_002_0.0639_0.0591_0.9742_0.9761.h5')
+    # models.append(model)
+    # model = load_model('models/tune_fold10_30_transunetlstm_sig1_37497_1_004_0.0585_0.0562_0.9764_0.9773.h5')
+    # models.append(model)
+
+    '''ver.5'''
+    model = load_model('models/shuffle_30_aconvunet_sig1_68742_0_246_0.0496_0.0784_0.9967_0.9875.h5')
     models.append(model)
 
     preprocessor = PlainPreprocessor(hyper_params)
@@ -63,40 +98,12 @@ def load_ans(data_path_, rpos_path_, fs_):
 
         ecg_data = np.transpose(io.loadmat(ecg_path)['ecg'])[0]
         r_ref = io.loadmat(ref_path)['R_peak'].flatten()
+        r_ref = r_ref[(r_ref >= 0.5*fs_) & (r_ref <= 9.5*fs_)]
 
         r_hr = np.array([loc for loc in r_ref if ((loc > 5.5 * fs_) and (loc < len(ecg_data) - 0.5 * fs_))])
 
         print('estimating ', ecg_path)
         ecg_data = preprocessor.single_preprocess(ecg_data)
-
-        '''validate plotting'''
-        # offset=0
-        # data_dir = gen_pp_data_dir_name()
-        # train_sig, pre_train_sig, pre_train_label = pickle.load(open(os.path.join(data_dir, 'icbeb_'+index +'.dat'), 'rb'))
-        # sig = pre_train_sig[offset:offset+hyper_params['crop_len']]
-        # sig_raw = sig
-        # sig = normalize(sig)
-        # sig = np.reshape(sig, newshape=(1,5000,1))
-        # segs = []
-        # for idx in range(3):
-        #     seg = models[idx].predict(sig)
-        #     segs.append(seg)
-        # sig = normalize(sig_raw)
-        # sig = diff(sig)
-        # sig = np.reshape(sig, newshape=(1,5000,1))
-
-        # for idx in range(3):
-        #     seg = models[idx+3].predict(sig)
-        #     segs.append(seg)
-        #
-        # seg = np.average(np.array(segs), axis=0)
-        # seg = np.argmax(seg, axis=2)
-        # plt.plot(sig[0])
-        # plt.plot(ecg_data+0.5)
-        # plt.plot(seg[0])
-        # plt.plot(pre_train_label-0.5)
-        # plt.legend(['pre', 'raw', 'seg', 'label'])
-        # plt.show()
 
         hr_ans, r_ans = CPSC2019_challenge(ecg_data, models)
         r_ans = np.array(r_ans)
@@ -162,8 +169,8 @@ if __name__ == '__main__':
     FS = 500
     THR = 0.075
 
-    DATA_PATH = 'dat/icbeb2019/data'
-    RPOS_PATH = 'dat/icbeb2019/ref/'
+    DATA_PATH = '../dat/icbeb2019/data'
+    RPOS_PATH = '../dat/icbeb2019/ref/'
 
     R_ref, HR_ref, R_ans, HR_ans = load_ans(DATA_PATH, RPOS_PATH, FS)
     rec_acc, hr_acc = score(R_ref, HR_ref, R_ans, HR_ans, FS, THR)

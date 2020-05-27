@@ -3,7 +3,7 @@ from wfdb import processing
 import numpy as np
 import scipy.signal as signal
 import matplotlib.pyplot as plt
-from sig_tool import resample
+from sig_tool import resample, resample_idx
 import shutil
 import os
 from sig_tool import interpolate
@@ -66,51 +66,52 @@ def load_database(database, db_dir):
         anno = wfdb.rdann(os.path.join(dir, rec), 'atr')
 
         sig = data.p_signal
-        anno_idx = np.zeros(len(sig))
-        anno_typ_idx = np.ones(len(sig))*(-1)
-        for idx in range(len(anno.sample)):
-            anno_idx[anno.sample[idx]] = 1
-            anno_typ_idx[anno.sample[idx]] = anno.subtype[idx]
+        anno_idx = [s for s in anno.sample]
+        anno_typ = [s for s in anno.symbol]
 
-        data_list.append(sig)
-        anno_list.append(anno_idx)
-        anno_typ_list.append(anno_typ_idx)
         name_list.append(rec)
+        data_list.append(sig)
 
-        # plt.plot(sig)
-        # plt.plot(anno_idx)
-        # plt.show()
+        anno_list.append(anno_idx)
+        anno_typ_list.append(anno_typ)
 
 
     return name_list, data_list, anno_list, anno_typ_list
 
+def delete_non_beat(symbol, sample):
+    """删除非心拍的标注符号"""
+    AAMI_MIT_MAP = {'N': 'Nfe/jnBLR',#将19类信号分为五大类
+                    'S': 'SAJa',
+                    'V': 'VEr',
+                    'F': 'F',
+                    'Q': 'Q?'}
+    MIT2AAMI = {c: k for k in AAMI_MIT_MAP.keys() for c in AAMI_MIT_MAP[k]}
+    mit_beat_codes = list(MIT2AAMI.keys())
+    symbol = np.array(symbol)#symbol对应标签,sample为R峰所在位置，sig为R峰值
+    isin = np.isin(symbol, mit_beat_codes)
+    symbol = symbol[isin]#去除19类之外的非心拍标注信号
+    symbol = np.array([MIT2AAMI[x] for x in symbol])#将19类信号划分为五类
+    return symbol, np.copy(sample[isin])#sample对应R峰采样点位置，利用R峰值判断AAMI五种类型
 
-def is_beat(anno_symb):
-    beat_anno = ['N', 'L', 'R', 'B', 'A', 'a', 'J', 'S', 'V', 'r', 'F', 'e', 'j', 'n', 'E', '/', 'f', 'Q', '?']
-    nobeat_anno = ['[', '!', ']', 'x', '(', ')', 'p', 't', 'u', '`', '\'', '^', '|', '~', '+', 's', 'T', '*', 'D', '=', '\"', '@']
-    if anno_symb in beat_anno:
+def is_anno_beat(anno_symb):
+    AAMI_MIT_MAP = {'N': 'Nfe/jnBLR',#将19类信号分为五大类
+                    'S': 'SAJa',
+                    'V': 'VEr',
+                    'F': 'F',
+                    'Q': 'Q?'}
+    MIT2AAMI = {c: k for k in AAMI_MIT_MAP.keys() for c in AAMI_MIT_MAP[k]}
+    mit_beat_codes = list(MIT2AAMI.keys())
+    if anno_symb in mit_beat_codes:
         return True
     else:
         return False
 
-def load_mitdb(set_len=5000, db_dir='wfdb', database='mitdb'):
+def load_mitdb(db_dir='wfdb', database='mitdb'):
     (name_list, data_list, anno_list, anno_typ_list) = load_database(database, db_dir)
 
     ''' resample before splitting'''
     print('start resampling')
     cnt = 0
-
-    # draw_idx = 23
-    # plt.figure()
-    # plt.plot(data_list[draw_idx])
-    # plt.plot(anno_list[draw_idx])
-    # plt.show()
-    # s = resample(data_list[draw_idx], 360, 500, 'linear')
-    # anno = resample(anno_list[draw_idx], 360, 500, 'label')
-    # plt.figure()
-    # plt.plot(s)
-    # plt.plot(anno)
-    # plt.show()
 
     multiTask = MultiTask(pool_size=40, queue_size=5000)
     for d in data_list:
@@ -118,26 +119,13 @@ def load_mitdb(set_len=5000, db_dir='wfdb', database='mitdb'):
         cnt += 1
     rs_data = [d for d in multiTask.subscribe()]
 
-    cnt = 0
-    multiTask = MultiTask(pool_size=40, queue_size=5000)
-    for a in anno_list:
-        multiTask.submit(cnt, resample, (a, 360, 500, 'label'))
-        cnt += 1
-    rs_anno = [a for a in multiTask.subscribe()]
-
-    cnt = 0
-    multiTask = MultiTask(pool_size=40, queue_size=5000)
-    for a in anno_typ_list:
-        multiTask.submit(cnt, resample, (a, 360, 500, 'label_str'))
-        cnt += 1
-    rs_anno_typ = [a for a in multiTask.subscribe()]
-
+    rs_anno = [resample_idx(anno, 360, 500) for anno in anno_list]
+    rs_anno_typ = [typ for typ in anno_typ_list]
 
     return name_list, rs_data, rs_anno, rs_anno_typ
 
 
 def load_aha(db_dir='wfdb', database='aha'):
-
     dir = os.path.join(db_dir, database)
     file_list = []
     for root, dirs, files in os.walk(dir):
@@ -154,11 +142,7 @@ def load_aha(db_dir='wfdb', database='aha'):
     anno_list = []
     anno_typ_list = []
 
-    # cnt = 0
     for rec in record_list:
-        # cnt += 1
-        # if cnt > 10:
-        #     break
         print('loading data', rec)
         data = wfdb.rdrecord(os.path.join(dir, rec))
         anno = wfdb.rdann(os.path.join(dir, rec), 'atr')
@@ -166,95 +150,72 @@ def load_aha(db_dir='wfdb', database='aha'):
         sig = data.p_signal
         '''aha: local peaks to trace the R peak'''
 
-        '''test code to check nan in data'''
-        # has_nan = False
-        # for idx in range(len(sig)):
-        #     if np.isnan(sig[idx,0]) or np.isnan(sig[idx,1]):
-        #         has_nan = True
-        #         print(idx)
-        # if has_nan:
-        #     plt.title(rec)
-        #     plt.plot(sig[:,0])
-        #     plt.plot(sig[:,1]-2)
-        #     plt.show()
-
         '''nan handling by interpolation'''
-        # idx_start = -1
-        # idx_stop = -1
-        # for idx in range(len(sig)):
-        #     if np.isnan(sig[idx,0]):
-        #         if idx_start < 0:
-        #             idx_start = idx - 1
-        #     else:
-        #         if idx_start >= 0:
-        #             idx_stop = idx
-        #
-        #     if idx_start >= 0 and idx_stop >= 0:
-        #         print('ch0 interpolating from ', idx_start, ' to ', idx_stop)
-        #         sig_interp = interpolate(sig[idx_start,0], sig[idx_stop,0], idx_stop-idx_start+1)
-        #         cnt = 0
-        #         for idx in range(len(sig_interp)):
-        #             sig[idx_start+idx,0] = sig_interp[idx]
-        #         idx_start = -1
-        #         idx_stop = -1
-        #
-        # idx_start = -1
-        # idx_stop = -1
-        # for idx in range(len(sig)):
-        #     if np.isnan(sig[idx,1]):
-        #         if idx_start < 0:
-        #             idx_start = idx - 1
-        #     else:
-        #         if idx_start >= 0:
-        #             idx_stop = idx
-        #
-        #     if idx_start >= 0 and idx_stop >= 0:
-        #         print('ch1 interpolating from ', idx_start, ' to ', idx_stop)
-        #         sig_interp = interpolate(sig[idx_start,1], sig[idx_stop,1], idx_stop-idx_start+1)
-        #         cnt = 0
-        #         for idx in range(len(sig_interp)):
-        #             sig[idx_start+idx,1] = sig_interp[idx]
-        #
-        #         idx_start = -1
-        #         idx_stop = -1
+        idx_start = -1
+        idx_stop = -1
+        for idx in range(len(sig)):
+            if np.isnan(sig[idx,0]):
+                if idx_start < 0:
+                    idx_start = idx - 1
+            else:
+                if idx_start >= 0:
+                    idx_stop = idx
+
+            if idx_start >= 0 and idx_stop >= 0:
+                print('ch0 interpolating from ', idx_start, ' to ', idx_stop)
+                sig_interp = interpolate(sig[idx_start,0], sig[idx_stop,0], idx_stop-idx_start+1)
+                for idx in range(len(sig_interp)):
+                    sig[idx_start+idx,0] = sig_interp[idx]
+                idx_start = -1
+                idx_stop = -1
+
+        idx_start = -1
+        idx_stop = -1
+        for idx in range(len(sig)):
+            if np.isnan(sig[idx,1]):
+                if idx_start < 0:
+                    idx_start = idx - 1
+            else:
+                if idx_start >= 0:
+                    idx_stop = idx
+
+            if idx_start >= 0 and idx_stop >= 0:
+                print('ch1 interpolating from ', idx_start, ' to ', idx_stop)
+                sig_interp = interpolate(sig[idx_start,1], sig[idx_stop,1], idx_stop-idx_start+1)
+                for idx in range(len(sig_interp)):
+                    sig[idx_start+idx,1] = sig_interp[idx]
+
+                idx_start = -1
+                idx_stop = -1
 
         peaks = processing.find_local_peaks(sig[:,0], 10)
 
         idx2 = 0
         anno_r = []
-        for idx in anno.sample:
+        anno_typ = []
+        for idx in range(len(anno.sample)):
             idx_start = idx2
             for idx_peak in peaks[idx_start:]:
                 idx2 += 1
                 '''aha: find the nearest R peak after the QRS onset'''
-                if idx_peak > idx:
+                if idx_peak > anno.sample[idx]:
                     anno_r.append(idx_peak)
+                    anno_typ.append(anno.symbol[idx])
                     break
 
-        anno_r_idx = np.zeros(len(sig[:,0]))
-        for idx in anno_r:
-            anno_r_idx[idx] = 1
-        anno_typ = anno.subtype
-        anno_typ_idx = [''] * len(sig)
-        for idx in range(len(anno_r)):
-            anno_typ_idx[anno_r[idx]] = anno_typ[idx]
+        anno_r_idx = [r for r in anno_r]
 
-        # trunc the data
+        anno_typ_idx = [typ for typ in anno_typ]
+
+        #trunc data
         sig = sig[anno_r[0]-200:]
-        anno_r_idx = anno_r_idx[anno_r[0]-200:]
-        anno_r = anno_r - (anno_r[0] + 200)
-        anno_typ_idx = anno_typ_idx[anno_r[0]-200:]
+        anno_r_idx = [r-anno_r[0] for r in anno_r_idx]
 
         data_list.append(sig)
         anno_list.append(anno_r_idx)
         anno_typ_list.append(anno_typ_idx)
 
         name_list.append(rec)
-
-        for idx in range(len(sig)):
-            if any(np.isnan(sig[idx])):
-                print(rec, 'nan ', idx)
-                break
 
     ''' resample before splitting'''
     print('start resampling')
@@ -265,19 +226,7 @@ def load_aha(db_dir='wfdb', database='aha'):
         cnt += 1
     rs_data = [d for d in multiTask.subscribe()]
 
-    cnt = 0
-    multiTask = MultiTask(pool_size=40, queue_size=5000)
-    for a in anno_list:
-        multiTask.submit(cnt, resample, (a, 250, 500, 'label'))
-        cnt += 1
-    rs_anno = [a for a in multiTask.subscribe()]
-
-    cnt = 0
-    multiTask = MultiTask(pool_size=40, queue_size=5000)
-    for a in anno_typ_list:
-        multiTask.submit(cnt, resample, (a, 250, 500, 'label_str'))
-        cnt += 1
-    rs_anno_typ = [a for a in multiTask.subscribe()]
-
+    rs_anno = [resample_idx(anno, 250, 500) for anno in anno_list]
+    rs_anno_typ = [typ for typ in anno_typ_list]
 
     return name_list, rs_data, rs_anno, rs_anno_typ

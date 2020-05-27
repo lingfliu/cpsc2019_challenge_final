@@ -54,18 +54,6 @@ def _filtering(sig, hyper_params):
     # normalize may cause nan issues for aha
     sig = normalize(sig)
 
-    diff_sig = diff(sig)
-    # diff_sig = normalize(diff_sig)
-
-    sig = [sig, diff_sig]
-
-    # plt.figure(figsize=(16,16))
-    # plt.plot(sig_raw)
-    # plt.plot(sig_med)
-    # plt.plot(sig[0][23:])
-    # plt.plot(sig_unfiltered)
-    # plt.legend(['raw', 'med', 'sig', 'unfiltered'])
-    # plt.show()
     return sig
 
 
@@ -115,7 +103,8 @@ class BaseModel:
         epochs = self.hyper_params.get('epochs', 100)
         verbose = self.hyper_params.get('verbose', 1)
         callbacks = self.hyper_params.get('callbacks',[])
-        self.model.fit(train_x, train_y, batch_size=batch_size, epochs=epochs, callbacks=callbacks, validation_data=(val_x, val_y), verbose=verbose)
+        self.model.fit(train_x, train_y, batch_size=batch_size, epochs=epochs, callbacks=callbacks, validation_data=(val_x, val_y), verbose=verbose
+                       )
 
     def train_gen(self, train_iter, val_iter, class_weight):
         batch_size = self.hyper_params.get('batch_size', 4)
@@ -131,5 +120,4 @@ class BaseModel:
                                         callbacks=callbacks,
                                         validation_data=val_iter,
                                         validation_steps=math.ceil(val_len//batch_size),
-                                        # class_weight= {0:0.2, 1:1}
                                         )

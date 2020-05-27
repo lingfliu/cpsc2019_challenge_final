@@ -16,16 +16,17 @@ def CPSC2019_challenge(ECG, models):
     qrs: R peak location detected beased on the ecg data and your algorithm
 
     '''
-    ECG = np.transpose(np.array([ECG]))
-    ECG = np.reshape(ECG, newshape=(1,5000,1))
-    segs = []
-    for idx in range(len(models)):
-        seg = models[idx].predict(ECG)
-        segs.append(seg)
+    ECG = ECG[4:4996]
 
-    seg = np.average(np.array(segs), axis=0)
+    ECG = np.transpose(np.array([ECG]))
+    ECG = np.reshape(ECG, newshape=(1,4992,1))
+    seg = models[0].predict(ECG)
     seg = np.argmax(seg, axis=2)
     seg = seg[0]
+    ss = [seg[0] for _ in range(4)]
+    [ss.append(s) for s in seg]
+    [ss.append(seg[-1]) for _ in range(4)]
+    seg = np.array(ss)
 
     # median smoothing to reducec notch errors
     seg = med_smooth(seg, 10)
